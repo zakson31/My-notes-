@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Notes</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #e8edf2; --card: #ffffff; --ink: #14213d; --muted: #5b6b86;
+    --line: #cfd8e3; --accent: #2f5bea; --danger: #c62f4a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1626; --card: #172036; --ink: #e8edf7; --muted: #94a3bd;
+      --line: #2a3752; --accent: #7a9bff; --danger: #ff7b92;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 2.6rem; font-weight: 800; letter-spacing: -0.03em; margin: 8px 0 4px; }
+  p.sub { color: var(--muted); margin: 0 0 24px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  input, textarea {
+    width: 100%; font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 10px;
+  }
+  textarea { min-height: 110px; resize: vertical; }
+  input:focus, textarea:focus, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer; border-radius: 10px;
+    border: 1px solid var(--accent); padding: 11px 16px;
+    background: var(--accent); color: #fff;
+  }
+  button.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  button.danger { background: transparent; color: var(--danger); border-color: var(--line); padding: 6px 10px; font-size: .85rem; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 20px; }
+  .who { color: var(--muted); font-size: .85rem; word-break: break-all; }
+  .note { margin-top: 14px; }
+  .note h3 { margin: 0 0 4px; font-size: 1.15rem; }
+  .note p { margin: 0 0 12px; white-space: pre-wrap; word-break: break-word; }
+  .note footer { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: .8rem; }
+  .msg { min-height: 1.4em; font-size: .9rem; color: var(--danger); margin: 8px 0 0; }
+  .empty { color: var(--muted); text-align: center; padding: 28px 0 4px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- LOGIN / SIGN UP -->
+  <section id="auth" hidden>
+    <h1>My Notes</h1>
+    <p class="sub">Your private notes, saved to your own account.</p>
+    <div class="card">
+      <input id="email" type="email" placeholder="Email" autocomplete="email">
+      <input id="password" type="password" placeholder="Password (6+ characters)" autocomplete="current-password">
+      <div class="row">
+        <button id="loginBtn">Log in</button>
+        <button id="signupBtn" class="ghost">Create account</button>
+      </div>
+      <p id="authMsg" class="msg"></p>
+    </div>
+  </section>
+
+  <!-- NOTES -->
+  <section id="app" hidden>
+    <div class="top">
+      <div>
+        <h1>My Notes</h1>
+        <div class="who" id="who"></div>
+      </div>
+      <button id="logoutBtn" class="ghost">Log out</button>
+    </div>
+    <div class="card">
+      <input id="title" placeholder="Title">
+      <textarea id="content" placeholder="Write your note"></textarea>
+      <button id="saveBtn">Save note</button>
+      <p id="appMsg" class="msg"></p>
+    </div>
+    <div id="list"></div>
+  </section>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+  // ====== 1)sb_publishable_DxRNO2WQOFPLHZ-xHqQaag_-jieVxo6  (between the quotes) ======
+  const SUPABASE_URL = "https://fnabzojdnxfjxjjxctaa.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_DxRNO2WQOFPLHZ-xHqQaag_-jieVxo6";
+  // =======================================================================
+
+  const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  const $ = (id) => document.getElementById(id);
+
+  function show(loggedIn, user) {
+    $("auth").hidden = loggedIn;
+    $("app").hidden = !loggedIn;
+    if (loggedIn) {
+      $("who").textContent = user.email;
+      loadNotes();
+    }
+  }
+
+  async function signUp() {
+    $("authMsg").textContent = "";
+    const { error } = await db.auth.signUp({ email: $("email").value.trim(), password: $("password").value });
+    if (error) $("authMsg").textContent = error.message;
+  }
+
+  async function logIn() {
+    $("authMsg").textContent = "";
+    const { error } = await db.auth.signInWithPassword({ email: $("email").value.trim(), password: $("password").value });
+    if (error) $("authMsg").textContent = error.message;
+  }
+
+  async function logOut() { await db.auth.signOut(); }
+
+  async function loadNotes() {
+    const { data, error } = await db.from("notes").select("*").order("created_at", { ascending: false });
+    const list = $("list");
+    list.innerHTML = "";
+    if (error) { $("appMsg").textContent = error.message; return; }
+    if (!data.length) {
+      const e = document.createElement("div");
+      e.className = "empty";
+      e.textContent = "No notes yet. Write your first one above.";
+      list.appendChild(e);
+      return;
+    }
+    data.forEach((n) => {
+      const card = document.createElement("article");
+      card.className = "card note";
+      const h = document.createElement("h3");
+      h.textContent = n.title || "Untitled";
+      const p = document.createElement("p");
+      p.textContent = n.content || "";
+      const f = document.createElement("footer");
+      const d = document.createElement("span");
+      d.textContent = new Date(n.created_at).toLocaleString();
+      const del = document.createElement("button");
+      del.className = "danger";
+      del.textContent = "Delete note";
+      del.onclick = () => deleteNote(n.id);
+      f.append(d, del);
+      card.append(h, p, f);
+      list.appendChild(card);
+    });
+  }
+
+  async function saveNote() {
+    $("appMsg").textContent = "";
+    const title = $("title").value.trim();
+    const content = $("content").value.trim();
+    if (!title && !content) { $("appMsg").textContent = "Write a title or a note first."; return; }
+    const { error } = await db.from("notes").insert({ title, content });
+    if (error) { $("appMsg").textContent = error.message; return; }
+    $("title").value = "";
+    $("content").value = "";
+    loadNotes();
+  }
+
+  async function deleteNote(id) {
+    if (!confirm("Delete this note?")) return;
+    const { error } = await db.from("notes").delete().eq("id", id);
+    if (error) $("appMsg").textContent = error.message;
+    loadNotes();
+  }
+
+  $("signupBtn").onclick = signUp;
+  $("loginBtn").onclick = logIn;
+  $("logoutBtn").onclick = logOut;
+  $("saveBtn").onclick = saveNote;
+
+  db.auth.onAuthStateChange((_event, session) => show(!!session, session && session.user));
+  db.auth.getSession().then(({ data }) => show(!!data.session, data.session && data.session.user));
+</script>
+</body>
+</html>
